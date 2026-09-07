@@ -737,7 +737,11 @@ impl Command {
 
 #[cfg(any(feature = "build", feature = "eval"))]
 impl Command {
-    pub(crate) fn render_help(&self, wrap_width: Option<usize>) -> String {
+    pub(crate) fn render_help(
+        &self,
+        wrap_width: Option<usize>,
+        symbol_choices: &HashMap<char, Vec<String>>,
+    ) -> String {
         let mut output = vec![];
         if !&self.describe.is_empty() {
             output.push(render_block("", &self.describe, wrap_width));
@@ -748,7 +752,7 @@ impl Command {
         output.push(self.render_usage());
         output.push(String::new());
         output.extend(self.render_positionals(wrap_width));
-        output.extend(self.render_symbols(wrap_width));
+        output.extend(self.render_symbols(wrap_width, symbol_choices));
         output.extend(self.render_flag_options(wrap_width));
         output.extend(self.render_subcommands(wrap_width));
         output.extend(self.render_external_subcommands(wrap_width));
@@ -842,7 +846,11 @@ impl Command {
         output
     }
 
-    fn render_symbols(&self, wrap_width: Option<usize>) -> Vec<String> {
+    fn render_symbols(
+        &self,
+        wrap_width: Option<usize>,
+        symbol_choices: &HashMap<char, Vec<String>>,
+    ) -> Vec<String> {
         let mut output = vec![];
         let symbols = match self.find_default_subcommand() {
             Some(subcmd) => &subcmd.symbols,
@@ -857,7 +865,10 @@ impl Command {
             .map(|symbol| {
                 let value = symbol.render_body();
                 value_size = value_size.max(value.len());
-                (value, symbol.describe.clone())
+                let choices = symbol
+                    .choice_values()
+                    .or_else(|| symbol_choices.get(&symbol.sign));
+                (value, symbol.render_describe(choices))
             })
             .collect();
         value_size += 2;
@@ -993,6 +1004,30 @@ impl SymbolParam {
             Some(ChoiceValue::Fn(f, validate)) => Some((f, validate)),
             _ => None,
         }
+    }
+
+    pub(crate) fn choice_values(&self) -> Option<&Vec<String>> {
+        match &self.choice {
+            Some(ChoiceValue::Values(values)) => Some(values),
+            _ => None,
+        }
+    }
+
+    /// The describe, followed by the values the symbol accepts when they are known.
+    /// A choice function only has values here when the help text is rendered by a
+    /// run that could execute it.
+    #[cfg(any(feature = "build", feature = "eval"))]
+    pub(crate) fn render_describe(&self, choices: Option<&Vec<String>>) -> String {
+        let mut output = self.describe.clone();
+        if let Some(choices) = choices {
+            if !choices.is_empty() {
+                if !output.is_empty() {
+                    output.push(' ');
+                }
+                output.push_str(&format!("[possible values: {}]", choices.join(", ")));
+            }
+        }
+        output
     }
 }
 

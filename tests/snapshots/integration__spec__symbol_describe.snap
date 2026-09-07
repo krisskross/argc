@@ -13,7 +13,7 @@ ARGS:
   [VAL]
 
 SYMBOLS:
-  +TOOLCHAIN  The rust toolchain to build with
+  +TOOLCHAIN  The rust toolchain to build with [possible values: stable, nightly]
   @FILE       Read arguments from a file
 
 OPTIONS:

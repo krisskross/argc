@@ -996,6 +996,36 @@ impl<'a: 'b, 'b, T: Runtime> Matcher<'a, 'b, T> {
         None
     }
 
+    /// The values every symbol of `cmd` accepts, for the help text. A symbol whose
+    /// choice function this run cannot execute, such as one built by `--argc-build`,
+    /// contributes nothing and is listed without its values.
+    #[cfg(feature = "eval")]
+    fn symbol_choices(&self, cmd: &'a Command) -> HashMap<char, Vec<String>> {
+        let mut fns: Vec<&'a str> = vec![];
+        for symbol in cmd.symbols.values() {
+            if let Some((choice_fn, _)) = symbol.choice_fn() {
+                if !fns.contains(&choice_fn.as_str()) {
+                    fns.push(choice_fn.as_str());
+                }
+            }
+        }
+        let mut output = HashMap::new();
+        if fns.is_empty() {
+            return output;
+        }
+        let Some(values) = self.execute_fns(&fns) else {
+            return output;
+        };
+        for symbol in cmd.symbols.values() {
+            if let Some((choice_fn, _)) = symbol.choice_fn() {
+                if let Some(choices) = values.get(choice_fn.as_str()) {
+                    output.insert(symbol.sign, choices.clone());
+                }
+            }
+        }
+        output
+    }
+
     #[cfg(feature = "eval")]
     fn execute_choices_fns<'x>(
         &'x self,
@@ -1006,13 +1036,18 @@ impl<'a: 'b, 'b, T: Runtime> Matcher<'a, 'b, T> {
             fns.extend(bind_envs.choice_fns.iter());
             fns.into_iter().collect()
         };
+        self.execute_fns(&fns)
+    }
+
+    #[cfg(feature = "eval")]
+    fn execute_fns(&self, fns: &[&'a str]) -> Option<HashMap<&'a str, Vec<String>>> {
         let script_path = self.script_path.as_ref()?;
         let mut choices_fn_values = HashMap::new();
         let mut envs = HashMap::new();
         envs.insert("ARGC_OS".into(), self.runtime.os());
         let outputs = self
             .runtime
-            .exec_bash_functions(script_path, &fns, self.args, envs)?;
+            .exec_bash_functions(script_path, fns, self.args, envs)?;
         for (i, output) in outputs.into_iter().enumerate() {
             let choices = output
                 .split('\n')
@@ -1074,12 +1109,12 @@ impl<'a: 'b, 'b, T: Runtime> Matcher<'a, 'b, T> {
         let message = match err {
             MatchError::DisplayHelp => {
                 let cmd = self.last_cmd();
-                cmd.render_help(self.wrap_width)
+                cmd.render_help(self.wrap_width, &self.symbol_choices(cmd))
             }
             MatchError::DisplaySubcommandHelp(name) => {
                 let cmd = self.last_cmd();
                 let cmd = cmd.find_subcommand(name).unwrap();
-                cmd.render_help(self.wrap_width)
+                cmd.render_help(self.wrap_width, &self.symbol_choices(cmd))
             }
             MatchError::DisplayVersion => {
                 let cmd = self.last_cmd();
@@ -1514,6 +1549,19 @@ fn comp_subcomands(
 #[cfg(feature = "compgen")]
 fn comp_symbol(cmd: &Command, ch: char) -> Vec<CompItem> {
     if let Some(symbol_param) = cmd.symbols.get(&ch) {
+        if let Some(values) = symbol_param.choice_values() {
+            return values
+                .iter()
+                .map(|value| {
+                    (
+                        value.clone(),
+                        symbol_param.describe.clone(),
+                        false,
+                        CompColor::of_value(),
+                    )
+                })
+                .collect();
+        }
         match symbol_param.choice_fn() {
             Some((choices_fn, _)) => {
                 vec![(

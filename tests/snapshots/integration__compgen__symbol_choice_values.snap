@@ -1,0 +1,11 @@
+---
+source: tests/compgen.rs
+expression: data
+---
+************ COMPGEN `prog +` ************
+stable	/color:default	The toolchain to build with
+beta	/color:default	The toolchain to build with
+nightly	/color:default	The toolchain to build with
+
+************ COMPGEN `prog +b` ************
+beta	/color:default	The toolchain to build with

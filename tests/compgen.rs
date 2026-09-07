@@ -97,6 +97,15 @@ _choice_fn() {
 }
 
 #[test]
+fn symbol_choice_values() {
+    let script = r###"
+# @meta symbol +toolchain[stable|beta|nightly] The toolchain to build with
+# @option --oa
+"###;
+    snapshot_compgen!(script, [vec!["prog", "+"], vec!["prog", "+b"]]);
+}
+
+#[test]
 fn symbol_inherit() {
     let script = r###"
 # @meta symbol +toolchain[`_choice_fn`] The rust toolchain to build with

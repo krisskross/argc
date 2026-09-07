@@ -152,7 +152,7 @@ fn build_command(cmd: &Command, wrap_width: Option<usize>) -> String {
     };
 
     let usage = {
-        let usage = cmd.render_help(wrap_width);
+        let usage = cmd.render_help(wrap_width, &Default::default());
         let usage = usage.trim();
         format!(
             r#"

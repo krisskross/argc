@@ -343,6 +343,15 @@ _choice_fn() {
 }
 
 #[test]
+fn symbol_choice_values() {
+    let script = r###"
+# @meta symbol +toolchain[stable|beta|nightly] The toolchain to build with
+# @option --oa
+"###;
+    snapshot_multi!(script, [vec!["prog", "--help"], vec!["prog", "+beta"]]);
+}
+
+#[test]
 fn symbol_inherit() {
     let script = r###"
 # @meta symbol +toolchain The rust toolchain to build with

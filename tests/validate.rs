@@ -386,3 +386,12 @@ _choice_fn() {
 "###;
     snapshot!(script, &["prog", "+unknown"]);
 }
+
+#[test]
+fn symbol_choice_values() {
+    let script = r###"
+# @meta symbol +toolchain[stable|beta|nightly] The toolchain to build with
+# @option --oa
+"###;
+    snapshot!(script, &["prog", "+unknown"]);
+}

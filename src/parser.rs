@@ -13,7 +13,7 @@ use nom::{
         complete::{anychar, char, one_of, satisfy, space0, space1},
         streaming::none_of,
     },
-    combinator::{eof, fail, map, not, opt, peek, rest, success},
+    combinator::{eof, fail, map, not, opt, peek, rest, success, verify},
     error::ErrorKind,
     multi::{many0, many1, separated_list1},
     sequence::{delimited, pair, preceded, separated_pair, terminated},
@@ -698,7 +698,21 @@ fn parse_symbol_data(input: &str) -> nom::IResult<&str, (char, &str, Option<Choi
             parse_name,
             opt(delimited(
                 char('['),
-                pair(opt(char('?')), parse_value_fn),
+                alt((
+                    map(pair(opt(char('?')), parse_value_fn), |(validate, f)| {
+                        ChoiceValue::Fn(f.into(), validate.is_none())
+                    }),
+                    // An empty value is a typo, such as `[]` or `[a|]`, and the
+                    // symbol is rejected rather than left with no choices at all.
+                    map(
+                        verify(parse_choices, |choices: &Vec<&str>| {
+                            choices.iter().all(|v| !v.is_empty())
+                        }),
+                        |choices| {
+                            ChoiceValue::Values(choices.iter().map(|v| v.to_string()).collect())
+                        },
+                    ),
+                )),
                 char(']'),
             )),
             // Either the end of the line, or a describe separated by whitespace.
@@ -706,11 +720,7 @@ fn parse_symbol_data(input: &str) -> nom::IResult<&str, (char, &str, Option<Choi
             // `+toolchain[]`, an error instead of a describe of `[]`.
             parse_tail,
         ),
-        |(symbol, name, choice_fn, describe)| {
-            let choice =
-                choice_fn.map(|(validate, f)| ChoiceValue::Fn(f.into(), validate.is_none()));
-            (symbol, name, choice, describe)
-        },
+        |(symbol, name, choice, describe)| (symbol, name, choice, describe),
     )
     .parse(input)
 }
@@ -1202,7 +1212,16 @@ mod tests {
             parse_symbol("@file Read arguments from a file").unwrap(),
             ('@', "file", None, "Read arguments from a file")
         );
+        assert_eq!(
+            parse_symbol("+toolchain[stable|nightly] The rust toolchain").unwrap(),
+            (
+                '+',
+                "toolchain",
+                Some(ChoiceValue::Values(vec!["stable".into(), "nightly".into()])),
+                "The rust toolchain"
+            )
+        );
         assert!(parse_symbol("+toolchain[]").is_none());
-        assert!(parse_symbol("+toolchain[stable|nightly]").is_none());
+        assert!(parse_symbol("+toolchain[stable|]").is_none());
     }
 }
