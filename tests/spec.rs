@@ -327,6 +327,95 @@ fn symbol() {
 }
 
 #[test]
+fn symbol_describe() {
+    let script = r###"
+# @meta symbol +toolchain[`_choice_fn`] The rust toolchain to build with
+# @meta symbol @file Read arguments from a file
+# @option --oa
+# @arg val
+
+_choice_fn() {
+    echo stable
+    echo nightly
+}
+"###;
+    snapshot_multi!(script, [vec!["prog", "--help"]]);
+}
+
+#[test]
+fn symbol_choice_values() {
+    let script = r###"
+# @meta symbol +toolchain[stable|beta|nightly] The toolchain to build with
+# @option --oa
+"###;
+    snapshot_multi!(script, [vec!["prog", "--help"], vec!["prog", "+beta"]]);
+}
+
+#[test]
+fn symbol_inherit() {
+    let script = r###"
+# @meta symbol +toolchain The rust toolchain to build with
+
+# @cmd Build the project
+# @option --oa
+build() { :; }
+
+# @cmd Test the project
+# @meta symbol +target The target triple
+# @option --ob
+test() { :; }
+"###;
+    snapshot_multi!(
+        script,
+        [
+            vec!["prog", "build", "--help"],
+            vec!["prog", "build", "+nightly"],
+            vec!["prog", "test", "--help"],
+            vec!["prog", "test", "+x86_64-unknown-linux-gnu"],
+        ]
+    );
+}
+
+#[test]
+fn symbol_position() {
+    let script = r###"
+# @meta symbol +level[trace|debug|info|warn|error] Log level
+
+# @cmd Run it
+# @arg val
+run() { :; }
+"###;
+    snapshot_multi!(
+        script,
+        [
+            vec!["prog", "+debug", "run", "x"],
+            vec!["prog", "run", "+debug", "x"],
+            vec!["prog", "run", "x", "+debug"],
+            vec!["prog", "run", "--", "+debug"],
+        ]
+    );
+}
+
+#[test]
+fn symbol_bind_env() {
+    let script = r###"
+# @meta symbol +level[trace|debug|info] $$ Log level
+# @meta symbol @file $ARGC_FILE Read arguments from a file
+
+# @cmd Run it
+run() { :; }
+"###;
+    snapshot_multi!(
+        script,
+        [
+            vec!["prog", "run", "--help"],
+            vec!["prog", "run"],
+            vec!["prog", "+debug", "run"],
+        ]
+    );
+}
+
+#[test]
 fn plus_sign() {
     let script = r###"
 # @flag +a

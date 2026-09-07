@@ -8,12 +8,12 @@ use crate::Result;
 use anyhow::bail;
 use nom::{
     branch::alt,
-    bytes::complete::{escaped, tag, take_till, take_while1},
+    bytes::complete::{escaped, tag, take_till, take_while, take_while1},
     character::{
         complete::{anychar, char, one_of, satisfy, space0, space1},
         streaming::none_of,
     },
-    combinator::{eof, fail, map, not, opt, peek, rest, success},
+    combinator::{eof, fail, map, not, opt, peek, recognize, rest, success, verify},
     error::ErrorKind,
     multi::{many0, many1, separated_list1},
     sequence::{delimited, pair, preceded, separated_pair, terminated},
@@ -112,7 +112,7 @@ pub(crate) fn parse(source: &str) -> Result<Vec<Event>> {
     Ok(result)
 }
 
-pub(crate) fn parse_symbol(input: &str) -> Option<(char, &str, Option<&str>)> {
+pub(crate) fn parse_symbol(input: &str) -> Option<SymbolData<'_>> {
     let input = input.trim();
     parse_symbol_data(input).map(|(_, v)| v).ok()
 }
@@ -553,8 +553,16 @@ fn parse_value_notation(input: &str) -> nom::IResult<&str, &str> {
     .parse(input)
 }
 
+// An environment variable name, as the shell defines one: it does not start
+// with a digit, and it carries digits after that. `$APP2_PORT` was a syntax
+// error while the whole name had to be uppercase and underscores, which put
+// every tool with a digit in its name out of reach of a bound variable.
 fn parse_bind_env_name(input: &str) -> nom::IResult<&str, &str> {
-    take_while1(is_env_name_char).parse(input)
+    recognize(pair(
+        satisfy(|c: char| c.is_ascii_uppercase() || c == '_'),
+        take_while(is_env_name_char),
+    ))
+    .parse(input)
 }
 
 // Parse `a|b|c`
@@ -691,17 +699,45 @@ fn parse_normal_comment(input: &str) -> nom::IResult<&str, &str> {
     .parse(input)
 }
 
-fn parse_symbol_data(input: &str) -> nom::IResult<&str, (char, &str, Option<&str>)> {
+type SymbolData<'a> = (
+    char,
+    &'a str,
+    Option<ChoiceValue>,
+    Option<Option<String>>,
+    &'a str,
+);
+
+fn parse_symbol_data(input: &str) -> nom::IResult<&str, SymbolData<'_>> {
     map(
-        terminated(
-            (
-                alt((char('@'), char('+'))),
-                parse_name,
-                opt(delimited(char('['), parse_value_fn, char(']'))),
-            ),
-            eof,
+        (
+            alt((char('@'), char('+'))),
+            parse_name,
+            opt(delimited(
+                char('['),
+                alt((
+                    map(pair(opt(char('?')), parse_value_fn), |(validate, f)| {
+                        ChoiceValue::Fn(f.into(), validate.is_none())
+                    }),
+                    // An empty value is a typo, such as `[]` or `[a|]`, and the
+                    // symbol is rejected rather than left with no choices at all.
+                    map(
+                        verify(parse_choices, |choices: &Vec<&str>| {
+                            choices.iter().all(|v| !v.is_empty())
+                        }),
+                        |choices| {
+                            ChoiceValue::Values(choices.iter().map(|v| v.to_string()).collect())
+                        },
+                    ),
+                )),
+                char(']'),
+            )),
+            parse_zero_or_one_bind_env,
+            // Either the end of the line, or a describe separated by whitespace.
+            // Requiring the separator keeps a malformed choice-fn, such as
+            // `+toolchain[]`, an error instead of a describe of `[]`.
+            parse_tail,
         ),
-        |(symbol, name, choice_fn)| (symbol, name, choice_fn),
+        |(symbol, name, choice, env, describe)| (symbol, name, choice, env, describe),
     )
     .parse(input)
 }
@@ -778,7 +814,7 @@ fn is_name_char(c: char) -> bool {
 }
 
 fn is_env_name_char(c: char) -> bool {
-    c.is_ascii_uppercase() || c == '_'
+    c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_'
 }
 
 fn is_short_char(c: char) -> bool {
@@ -1157,14 +1193,97 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_bind_env_name() {
+        assert_eq!(
+            parse_symbol("+level $APP2_PORT").unwrap(),
+            ('+', "level", None, Some(Some("APP2_PORT".into())), "")
+        );
+        assert_eq!(
+            parse_symbol("+level $_X9").unwrap(),
+            ('+', "level", None, Some(Some("_X9".into())), "")
+        );
+        // A name cannot start with a digit, so this is describe text.
+        assert_eq!(
+            parse_symbol("+level $2APP").unwrap(),
+            ('+', "level", None, None, "$2APP")
+        );
+    }
+
+    #[test]
     fn test_parse_symbol() {
         assert_eq!(
             parse_symbol("+toolchain").unwrap(),
-            ('+', "toolchain", None)
+            ('+', "toolchain", None, None, "")
         );
         assert_eq!(
             parse_symbol("+toolchain[`_choice_toolchain`]").unwrap(),
-            ('+', "toolchain", Some("_choice_toolchain"))
+            (
+                '+',
+                "toolchain",
+                Some(ChoiceValue::Fn("_choice_toolchain".into(), true)),
+                None,
+                ""
+            )
         );
+        assert_eq!(
+            parse_symbol("+toolchain[?`_choice_toolchain`]").unwrap(),
+            (
+                '+',
+                "toolchain",
+                Some(ChoiceValue::Fn("_choice_toolchain".into(), false)),
+                None,
+                ""
+            )
+        );
+        assert_eq!(
+            parse_symbol("+toolchain[`_choice_toolchain`] The rust toolchain").unwrap(),
+            (
+                '+',
+                "toolchain",
+                Some(ChoiceValue::Fn("_choice_toolchain".into(), true)),
+                None,
+                "The rust toolchain"
+            )
+        );
+        assert_eq!(
+            parse_symbol("@file Read arguments from a file").unwrap(),
+            ('@', "file", None, None, "Read arguments from a file")
+        );
+        assert_eq!(
+            parse_symbol("+toolchain $$ The rust toolchain").unwrap(),
+            ('+', "toolchain", None, Some(None), "The rust toolchain")
+        );
+        assert_eq!(
+            parse_symbol("+toolchain[stable|nightly] $RUST_TOOLCHAIN").unwrap(),
+            (
+                '+',
+                "toolchain",
+                Some(ChoiceValue::Values(vec!["stable".into(), "nightly".into()])),
+                Some(Some("RUST_TOOLCHAIN".into())),
+                ""
+            )
+        );
+        assert_eq!(
+            parse_symbol("+toolchain[stable|nightly]").unwrap(),
+            (
+                '+',
+                "toolchain",
+                Some(ChoiceValue::Values(vec!["stable".into(), "nightly".into()])),
+                None,
+                ""
+            )
+        );
+        assert_eq!(
+            parse_symbol("+toolchain[stable|nightly] The rust toolchain").unwrap(),
+            (
+                '+',
+                "toolchain",
+                Some(ChoiceValue::Values(vec!["stable".into(), "nightly".into()])),
+                None,
+                "The rust toolchain"
+            )
+        );
+        assert!(parse_symbol("+toolchain[]").is_none());
+        assert!(parse_symbol("+toolchain[stable|]").is_none());
     }
 }

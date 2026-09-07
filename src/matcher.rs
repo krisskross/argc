@@ -7,7 +7,7 @@ use crate::{
     command::{Command, ExternalSubcommandInfo, SymbolParam},
     param::{ChoiceValue, FlagOptionParam, Param, ParamData, PositionalParam},
     runtime::Runtime,
-    utils::{argc_var_name, is_true_value, META_COMBINE_SHORTS},
+    utils::{argc_var_name, expand_shell_value, is_true_value, META_COMBINE_SHORTS},
 };
 
 #[cfg(feature = "compgen")]
@@ -131,7 +131,11 @@ impl<'a: 'b, 'b, T: Runtime> Matcher<'a, 'b, T> {
                 } else if is_rest_args_positional
                     || (cmd.is_empty_flags_options_subcommands()
                         && !cmd.help_flags.contains(&arg)
-                        && !cmd.version_flags.contains(&arg))
+                        && !cmd.version_flags.contains(&arg)
+                        // A command with nothing to parse takes every argument
+                        // as a positional, but a symbol is matched by its sign
+                        // wherever it appears, so it is not one.
+                        && find_symbol(cmd, arg).is_none())
                 {
                     add_positional_arg(
                         &mut positional_args,
@@ -253,8 +257,10 @@ impl<'a: 'b, 'b, T: Runtime> Matcher<'a, 'b, T> {
                             comp_option = Some(param.id());
                         }
                     } else if let Some((ch, symbol_param)) = find_symbol(cmd, arg) {
-                        if let Some(choice_fn) = &symbol_param.1 {
-                            choice_fns.insert(choice_fn);
+                        if let Some((choice_fn, validate)) = symbol_param.choice_fn() {
+                            if *validate {
+                                choice_fns.insert(choice_fn.as_str());
+                            }
                         }
                         symbol_args.push((&arg[1..], symbol_param));
                         if is_last_arg {
@@ -300,8 +306,10 @@ impl<'a: 'b, 'b, T: Runtime> Matcher<'a, 'b, T> {
                         &mut is_rest_args_positional,
                     );
                 } else if let Some((ch, symbol_param)) = find_symbol(cmd, arg) {
-                    if let Some(choice_fn) = &symbol_param.1 {
-                        choice_fns.insert(choice_fn);
+                    if let Some((choice_fn, validate)) = symbol_param.choice_fn() {
+                        if *validate {
+                            choice_fns.insert(choice_fn.as_str());
+                        }
                     }
                     symbol_args.push((&arg[1..], symbol_param));
                     if is_last_arg {
@@ -619,6 +627,16 @@ impl<'a: 'b, 'b, T: Runtime> Matcher<'a, 'b, T> {
         for param in &last_cmd.env_params {
             if !self.envs.contains_key(param.id()) {
                 if let Some(value) = param.get_env_value() {
+                    // A default that names a path is written with the shell
+                    // forms for one, and the emitted export is quoted, so it
+                    // is expanded here or not at all.
+                    let value = match value {
+                        ArgcValue::Env(id, v) => ArgcValue::Env(
+                            id,
+                            expand_shell_value(&v, &|name: &str| self.envs.get(name).cloned()),
+                        ),
+                        v => v,
+                    };
                     output.push(value);
                 }
             }
@@ -629,8 +647,15 @@ impl<'a: 'b, 'b, T: Runtime> Matcher<'a, 'b, T> {
             output.push(ArgcValue::Hook((before_hook, after_hook)));
         }
 
-        for (arg, (name, _)) in self.symbol_args.iter() {
-            output.push(ArgcValue::Single(name.to_string(), arg.to_string()));
+        for (arg, symbol_param) in self.symbol_args.iter() {
+            output.push(ArgcValue::Single(
+                symbol_param.name.clone(),
+                arg.to_string(),
+            ));
+        }
+
+        for (value, symbol_param) in self.symbol_bind_envs() {
+            output.push(ArgcValue::Single(symbol_param.name.clone(), value.clone()));
         }
 
         for level in 0..cmds_len {
@@ -688,6 +713,22 @@ impl<'a: 'b, 'b, T: Runtime> Matcher<'a, 'b, T> {
         output
     }
 
+    /// The symbols the command line did not carry, paired with the value their
+    /// environment variable holds. A symbol given on the command line wins, so
+    /// it is skipped here.
+    fn symbol_bind_envs(&self) -> Vec<(&String, &SymbolParam)> {
+        let mut output = vec![];
+        for (sign, symbol_param) in self.last_cmd().symbols.iter() {
+            if self.symbol_args.iter().any(|(_, v)| v.sign == *sign) {
+                continue;
+            }
+            if let Some(value) = symbol_param.bind_env().and_then(|v| self.envs.get(&v)) {
+                output.push((value, symbol_param));
+            }
+        }
+        output
+    }
+
     #[cfg(feature = "eval")]
     fn build_bind_envs<'x: 'a>(&'x self) -> BindEnvs<'a, 'x> {
         let cmds_len = self.cmds.len();
@@ -710,6 +751,14 @@ impl<'a: 'b, 'b, T: Runtime> Matcher<'a, 'b, T> {
                 let values = delimit_arg_values(param, &[env_value]);
                 bind_envs.positionals.insert(param.id(), values);
                 add_param_choice_fn(&mut bind_envs.choice_fns, param);
+            }
+        }
+
+        // A symbol read from the environment is validated like one given on the
+        // command line, so its choice function has to run.
+        for (_, symbol_param) in self.symbol_bind_envs() {
+            if let Some((choice_fn, true)) = symbol_param.choice_fn().map(|(f, v)| (f, *v)) {
+                bind_envs.choice_fns.insert(choice_fn.as_str());
             }
         }
         bind_envs
@@ -916,6 +965,31 @@ impl<'a: 'b, 'b, T: Runtime> Matcher<'a, 'b, T> {
                 }
             }
         }
+        let symbol_bind_envs = self.symbol_bind_envs();
+        let symbol_values = self
+            .symbol_args
+            .iter()
+            .map(|(value, param)| (value.to_string(), *param))
+            .chain(
+                symbol_bind_envs
+                    .iter()
+                    .map(|(value, param)| (value.to_string(), *param)),
+            );
+        for (value, symbol_param) in symbol_values {
+            if let Some(choices) =
+                get_param_choice(symbol_param.choice.as_ref(), &choices_fn_values)
+            {
+                if !choices.contains(&value) {
+                    return Some(MatchError::InvalidValue(
+                        level,
+                        value,
+                        symbol_param.render_name_notation(),
+                        choices.clone(),
+                    ));
+                }
+            }
+        }
+
         if positional_params_len > positional_values_len {
             let mut missing_positionals = vec![];
             for param in &last_cmd.positional_params[positional_values_len..] {
@@ -974,6 +1048,36 @@ impl<'a: 'b, 'b, T: Runtime> Matcher<'a, 'b, T> {
         None
     }
 
+    /// The values every symbol of `cmd` accepts, for the help text. A symbol whose
+    /// choice function this run cannot execute, such as one built by `--argc-build`,
+    /// contributes nothing and is listed without its values.
+    #[cfg(feature = "eval")]
+    fn symbol_choices(&self, cmd: &'a Command) -> HashMap<char, Vec<String>> {
+        let mut fns: Vec<&'a str> = vec![];
+        for symbol in cmd.symbols.values() {
+            if let Some((choice_fn, _)) = symbol.choice_fn() {
+                if !fns.contains(&choice_fn.as_str()) {
+                    fns.push(choice_fn.as_str());
+                }
+            }
+        }
+        let mut output = HashMap::new();
+        if fns.is_empty() {
+            return output;
+        }
+        let Some(values) = self.execute_fns(&fns) else {
+            return output;
+        };
+        for symbol in cmd.symbols.values() {
+            if let Some((choice_fn, _)) = symbol.choice_fn() {
+                if let Some(choices) = values.get(choice_fn.as_str()) {
+                    output.insert(symbol.sign, choices.clone());
+                }
+            }
+        }
+        output
+    }
+
     #[cfg(feature = "eval")]
     fn execute_choices_fns<'x>(
         &'x self,
@@ -984,13 +1088,18 @@ impl<'a: 'b, 'b, T: Runtime> Matcher<'a, 'b, T> {
             fns.extend(bind_envs.choice_fns.iter());
             fns.into_iter().collect()
         };
+        self.execute_fns(&fns)
+    }
+
+    #[cfg(feature = "eval")]
+    fn execute_fns(&self, fns: &[&'a str]) -> Option<HashMap<&'a str, Vec<String>>> {
         let script_path = self.script_path.as_ref()?;
         let mut choices_fn_values = HashMap::new();
         let mut envs = HashMap::new();
         envs.insert("ARGC_OS".into(), self.runtime.os());
         let outputs = self
             .runtime
-            .exec_bash_functions(script_path, &fns, self.args, envs)?;
+            .exec_bash_functions(script_path, fns, self.args, envs)?;
         for (i, output) in outputs.into_iter().enumerate() {
             let choices = output
                 .split('\n')
@@ -1052,12 +1161,12 @@ impl<'a: 'b, 'b, T: Runtime> Matcher<'a, 'b, T> {
         let message = match err {
             MatchError::DisplayHelp => {
                 let cmd = self.last_cmd();
-                cmd.render_help(self.wrap_width)
+                cmd.render_help(self.wrap_width, &self.symbol_choices(cmd))
             }
             MatchError::DisplaySubcommandHelp(name) => {
                 let cmd = self.last_cmd();
                 let cmd = cmd.find_subcommand(name).unwrap();
-                cmd.render_help(self.wrap_width)
+                cmd.render_help(self.wrap_width, &self.symbol_choices(cmd))
             }
             MatchError::DisplayVersion => {
                 let cmd = self.last_cmd();
@@ -1491,20 +1600,34 @@ fn comp_subcomands(
 
 #[cfg(feature = "compgen")]
 fn comp_symbol(cmd: &Command, ch: char) -> Vec<CompItem> {
-    if let Some((name, choices_fn)) = cmd.symbols.get(&ch) {
-        match choices_fn {
-            Some(choices_fn) => {
+    if let Some(symbol_param) = cmd.symbols.get(&ch) {
+        if let Some(values) = symbol_param.choice_values() {
+            return values
+                .iter()
+                .map(|value| {
+                    (
+                        value.clone(),
+                        symbol_param.describe.clone(),
+                        false,
+                        CompColor::of_value(),
+                    )
+                })
+                .collect();
+        }
+        match symbol_param.choice_fn() {
+            Some((choices_fn, _)) => {
                 vec![(
                     format!("__argc_fn={choices_fn}"),
-                    String::new(),
+                    symbol_param.describe.clone(),
                     false,
                     CompColor::of_value(),
                 )]
             }
             None => {
+                let name = &symbol_param.name;
                 vec![(
                     format!("__argc_value={name}"),
-                    String::new(),
+                    symbol_param.describe.clone(),
                     false,
                     CompColor::of_value(),
                 )]

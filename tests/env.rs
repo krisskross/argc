@@ -29,3 +29,21 @@ fn env_choice_fn() {
 fn env_run() {
     snapshot_meta_env!([], {"TEST_EB": "1"});
 }
+
+#[rstest]
+fn env_default_expand() {
+    snapshot_env!(
+        args: [],
+        envs: {"HOME": "/home/me"}
+        script_file: "examples/env-defaults.sh"
+    );
+}
+
+#[rstest]
+fn env_default_expand_with_base() {
+    snapshot_env!(
+        args: [],
+        envs: {"HOME": "/home/me", "TEST_BASE": "/var/state"}
+        script_file: "examples/env-defaults.sh"
+    );
+}

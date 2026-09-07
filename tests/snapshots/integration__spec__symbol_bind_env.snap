@@ -1,0 +1,58 @@
+---
+source: tests/spec.rs
+assertion_line: 412
+expression: data
+---
+************ RUN ************
+prog run --help
+
+# OUTPUT
+command cat >&2 <<-'EOF' 
+Run it
+
+USAGE: prog run [+LEVEL] [@FILE]
+
+SYMBOLS:
+  +LEVEL  Log level [possible values: trace, debug, info] [env: PROG_LEVEL]
+  @FILE   Read arguments from a file [env: ARGC_FILE]
+
+EOF
+exit 0
+
+# RUN_OUTPUT
+Run it
+
+USAGE: prog run [+LEVEL] [@FILE]
+
+SYMBOLS:
+  +LEVEL  Log level [possible values: trace, debug, info] [env: PROG_LEVEL]
+  @FILE   Read arguments from a file [env: ARGC_FILE]
+
+************ RUN ************
+prog run
+
+# OUTPUT
+argc__args=( prog run )
+argc__fn=run
+argc__positionals=(  )
+run
+
+# RUN_OUTPUT
+argc__args=([0]="prog" [1]="run")
+argc__fn=run
+argc__positionals=()
+run
+
+************ RUN ************
+prog +debug run
+
+# OUTPUT
+argc_level=debug
+argc__args=( prog +debug run )
+argc__fn=run
+argc__positionals=(  )
+run
+
+# RUN_OUTPUT
+error: `prog` requires a subcommand but one was not provided
+  [subcommands: run]

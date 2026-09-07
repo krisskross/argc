@@ -7,7 +7,7 @@ use crate::{
 use anyhow::Result;
 use indexmap::IndexSet;
 
-const UTIL_FNS: [(&str, &str); 6] = [
+const UTIL_FNS: [(&str, &str); 7] = [
     ("_argc_take_args", include_str!("template/take_args.sh")),
     (
         "_argc_match_positionals",
@@ -25,6 +25,10 @@ const UTIL_FNS: [(&str, &str); 6] = [
     (
         "_argc_maybe_flag_option",
         include_str!("template/maybe_flag_option.sh"),
+    ),
+    (
+        "_argc_expand_shell_value",
+        include_str!("template/expand_shell_value.sh"),
     ),
 ];
 
@@ -152,7 +156,7 @@ fn build_command(cmd: &Command, wrap_width: Option<usize>) -> String {
     };
 
     let usage = {
-        let usage = cmd.render_help(wrap_width);
+        let usage = cmd.render_help(wrap_width, &Default::default());
         let usage = usage.trim();
         format!(
             r#"
@@ -788,7 +792,7 @@ fn build_envs(cmd: &Command) -> String {
         .iter()
         .map(|param| {
             let var_name = param.var_name();
-            let default = build_default(&format!("export {var_name}"), param.default(), 3);
+            let default = build_env_default(&format!("export {var_name}"), param.default(), 3);
             let choice = build_choice(
                 &var_name,
                 &format!(r#"environment variable `{var_name}`"#),
@@ -820,6 +824,20 @@ fn build_envs(cmd: &Command) -> String {
         })
         .collect::<Vec<String>>()
         .join("")
+}
+
+/// An `@env` default is expanded before it reaches the script, the way the
+/// eval path expands it, so a default naming an XDG path resolves rather than
+/// arriving as its own source text.
+fn build_env_default(var_name: &str, value: Option<&DefaultValue>, indent_level: usize) -> String {
+    match value {
+        Some(DefaultValue::Value(value)) => {
+            let indent = build_indent(indent_level);
+            let value = escape_shell_words(value);
+            format!("\n{indent}{var_name}=\"$(_argc_expand_shell_value {value})\"")
+        }
+        _ => build_default(var_name, value, indent_level),
+    }
 }
 
 fn build_default(var_name: &str, value: Option<&DefaultValue>, indent_level: usize) -> String {

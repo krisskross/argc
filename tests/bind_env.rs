@@ -201,3 +201,37 @@ eval "$(argc --argc-eval "$0" "$@")"
     );
     script_file.close().unwrap();
 }
+
+#[rstest]
+fn bind_env_symbols_help() {
+    snapshot_bind_env!(args: ["symbols", "-h"], envs: {});
+}
+
+#[rstest]
+fn bind_env_symbols() {
+    snapshot_bind_env!(args: ["symbols"], envs: {
+        "BIND_ENVS_LEVEL": "debug",
+        "SYMBOL_FILE": "args.txt",
+    });
+}
+
+#[rstest]
+fn bind_env_symbols_argv_wins() {
+    snapshot_bind_env!(args: ["symbols", "+info"], envs: {
+        "BIND_ENVS_LEVEL": "debug",
+    });
+}
+
+#[rstest]
+fn bind_env_symbols_invalid() {
+    snapshot_bind_env!(args: ["symbols"], envs: {
+        "BIND_ENVS_LEVEL": "bogus",
+    });
+}
+
+#[rstest]
+fn bind_env_name_with_digit() {
+    snapshot_bind_env!(args: ["cmd_for_digits"], envs: {
+        "OD1_VALUE": "v",
+    });
+}

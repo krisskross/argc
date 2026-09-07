@@ -1,0 +1,10 @@
+---
+source: tests/compgen.rs
+expression: data
+---
+************ COMPGEN `prog build +` ************
+stable	/color:default
+nightly	/color:default
+
+************ COMPGEN `prog build +n` ************
+nightly	/color:default

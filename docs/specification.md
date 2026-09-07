@@ -164,6 +164,21 @@ Defines an environment variable.
 # @env EDB[=dev|prod]     choices + default
 ```
 
+A default is expanded before it reaches the script, so a default that names a
+path can be written the way a path is written:
+
+```sh
+# @env STATE_DIR=${XDG_STATE_HOME:-$HOME/.local/state}/myapp
+# @env CONFIG=~/.config/myapp/config
+```
+
+A leading `~`, `$NAME`, `${NAME}`, `${NAME:-fallback}` and `${NAME-fallback}`
+are expanded. Nothing else a shell does to a word is: no splitting, no globbing
+and no command substitution, so `$(date)` stays four characters of text. An
+undefined variable with no fallback expands to nothing, as it does in a shell.
+The expansion applies to `@env` alone, and it happens in the same place whether
+the script runs through `--argc-eval` or was built with `--argc-build`.
+
 ### `@meta`
 
 Adds metadata.
@@ -191,8 +206,48 @@ Adds metadata.
 # @meta dotenv .env.local
 # @meta require-tools git yq
 # @meta man-section 8
-# @meta symbol +toolchain[`_choice_fn`]
+# @meta symbol +toolchain[`_choice_fn`] The rust toolchain to build with
 ```
+
+A symbolic parameter is matched wherever it appears on the command line, by its
+leading sign rather than by position. It takes an optional choice list or
+choice function, and an optional describe:
+
+```sh
+# @meta symbol +toolchain                              plain
+# @meta symbol +toolchain The rust toolchain           describe
+# @meta symbol +toolchain[stable|beta|nightly]         choice
+# @meta symbol +toolchain[`_choice_fn`]                choice from fn
+# @meta symbol +toolchain[?`_choice_fn`]               choice from fn + no validation
+# @meta symbol +toolchain $$                           bind env, autonamed
+# @meta symbol +toolchain $RUST_TOOLCHAIN              bind env, named
+```
+
+The choices complete the value and validate it, so `prog +unknown` fails when
+`unknown` is not among them. The `?` prefix keeps the completion and drops the
+validation.
+
+<<<<<<< HEAD
+The describe is shown in the `SYMBOLS:` section of the help text, and the
+parameter itself is shown in the usage line as `[+TOOLCHAIN]`. The section
+lists the values the symbol accepts alongside the describe. A choice function
+runs while the help text is rendered, so a script built by `--argc-build`
+lists a literal choice list and nothing for a function.
+=======
+A symbol reads an environment variable when the command line does not carry it,
+spelled the way `@option` and `@arg` spell a binding: `$$` autonames the
+variable `<SCRIPT>_<SYMBOL>`, and `$NAME` names it outright. The command line
+wins over the variable, and a value taken from the variable is validated
+against the choice like any other.
+
+The describe is shown in the `SYMBOLS:` section of the help text, along with
+the choices and the bound variable, and the parameter itself is shown in the
+usage line as `[+TOOLCHAIN]`.
+>>>>>>> 8194439 (feat: bind an environment variable to @meta symbol)
+
+A symbol declared on a command is inherited by every subcommand under it,
+because a symbol is matched wherever it appears. A subcommand that declares the
+same sign overrides the inherited one.
 
 ## Syntax parts
 
@@ -292,7 +347,9 @@ A-Z a-z 0-9 `!` `#` `$` `%` `*` `+` `,` `.` `/` `:` `=` `?` `@` `[` `]` `^` `_` 
  Link environment variables to params:
 
 - `$$`: Automatically use the parameter's name in uppercase as the environment variable name, prefixed with the command name (e.g. `--port $$` in command `serve` becomes `SERVE_PORT`).
-- `$`[_NAME_]: Use a specific environment variable name.
+- `$`[_NAME_]: Use a specific environment variable name. The name is spelled as
+  a shell spells one: it starts with an uppercase letter or an underscore, and
+  carries digits after that, so `$APP2_PORT` is a name and `$2APP` is not.
 
 ### description
 

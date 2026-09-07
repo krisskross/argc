@@ -97,6 +97,35 @@ _choice_fn() {
 }
 
 #[test]
+fn symbol_choice_values() {
+    let script = r###"
+# @meta symbol +toolchain[stable|beta|nightly] The toolchain to build with
+# @option --oa
+"###;
+    snapshot_compgen!(script, [vec!["prog", "+"], vec!["prog", "+b"]]);
+}
+
+#[test]
+fn symbol_inherit() {
+    let script = r###"
+# @meta symbol +toolchain[`_choice_fn`] The rust toolchain to build with
+
+# @cmd Build the project
+# @option --oa
+build() { :; }
+
+_choice_fn() {
+    echo stable
+    echo nightly
+}
+"###;
+    snapshot_compgen!(
+        script,
+        [vec!["prog", "build", "+"], vec!["prog", "build", "+n"]]
+    );
+}
+
+#[test]
 fn plus_sign() {
     let script = r#"
 # @flag +a

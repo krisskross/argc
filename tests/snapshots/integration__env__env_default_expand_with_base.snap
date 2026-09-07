@@ -1,0 +1,20 @@
+---
+source: tests/env.rs
+assertion_line: 44
+expression: "format! (r#\"\n# OUTPUT\n{output}\n\n# BUILD_OUTPUT\n{build_output}\n\"#)"
+---
+
+# OUTPUT
+TEST_EXA=/var/state/app
+TEST_EXB=/home/me/app
+TEST_EXC=/home/me/x
+TEST_EXD=/tail
+TEST_EXE=plain
+
+
+# BUILD_OUTPUT
+TEST_EXA=/var/state/app
+TEST_EXB=/home/me/app
+TEST_EXC=/home/me/x
+TEST_EXD=/tail
+TEST_EXE=plain

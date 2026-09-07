@@ -1,0 +1,17 @@
+---
+source: tests/validate.rs
+expression: data
+---
+RUN
+prog +unknown
+
+# OUTPUT
+command cat >&2 <<-'EOF' 
+error: invalid value `unknown` for `+<TOOLCHAIN>`
+  [possible values: stable, beta, nightly]
+EOF
+exit 1
+
+# BUILD_OUTPUT
+argc__args=([0]="prog" [1]="+unknown")
+argc__positionals=([0]="+unknown")

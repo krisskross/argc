@@ -1,0 +1,44 @@
+---
+source: tests/spec.rs
+expression: data
+---
+************ RUN ************
+prog --help
+
+# OUTPUT
+command cat >&2 <<-'EOF' 
+USAGE: prog [+TOOLCHAIN] [OPTIONS]
+
+SYMBOLS:
+  +TOOLCHAIN  The toolchain to build with [possible values: stable, beta, nightly]
+
+OPTIONS:
+      --oa <OA>
+  -h, --help
+  -V, --version
+
+EOF
+exit 0
+
+# RUN_OUTPUT
+USAGE: prog [+TOOLCHAIN] [OPTIONS]
+
+SYMBOLS:
+  +TOOLCHAIN  The toolchain to build with [possible values: stable, beta, nightly]
+
+OPTIONS:
+      --oa <OA>
+  -h, --help
+  -V, --version
+
+************ RUN ************
+prog +beta
+
+# OUTPUT
+argc_toolchain=beta
+argc__args=( prog +beta )
+argc__positionals=(  )
+
+# RUN_OUTPUT
+argc__args=([0]="prog" [1]="+beta")
+argc__positionals=([0]="+beta")

@@ -1,0 +1,13 @@
+---
+source: tests/validate.rs
+expression: data
+---
+RUN
+prog +unknown
+
+# OUTPUT
+argc_toolchain=unknown
+argc__args=( prog +unknown )
+argc__positionals=(  )
+
+# BUILD_OUTPUT
