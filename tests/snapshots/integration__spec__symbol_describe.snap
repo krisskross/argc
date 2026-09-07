@@ -1,0 +1,40 @@
+---
+source: tests/spec.rs
+expression: data
+---
+************ RUN ************
+prog --help
+
+# OUTPUT
+command cat >&2 <<-'EOF' 
+USAGE: prog [+TOOLCHAIN] [@FILE] [OPTIONS] [VAL]
+
+ARGS:
+  [VAL]
+
+SYMBOLS:
+  +TOOLCHAIN  The rust toolchain to build with
+  @FILE       Read arguments from a file
+
+OPTIONS:
+      --oa <OA>
+  -h, --help
+  -V, --version
+
+EOF
+exit 0
+
+# RUN_OUTPUT
+USAGE: prog [+TOOLCHAIN] [@FILE] [OPTIONS] [VAL]
+
+ARGS:
+  [VAL]
+
+SYMBOLS:
+  +TOOLCHAIN  The rust toolchain to build with
+  @FILE       Read arguments from a file
+
+OPTIONS:
+      --oa <OA>
+  -h, --help
+  -V, --version

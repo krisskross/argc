@@ -7,7 +7,7 @@ use self::share_data::ShareData;
 use crate::argc_value::ArgcValue;
 #[cfg(feature = "eval")]
 use crate::matcher::Matcher;
-use crate::param::{EnvParam, FlagOptionParam, Param, PositionalParam};
+use crate::param::{ChoiceValue, EnvParam, FlagOptionParam, Param, PositionalParam};
 #[cfg(feature = "export")]
 use crate::param::{EnvValue, FlagOptionValue, PositionalValue};
 use crate::parser::{parse, parse_symbol, Event, EventData, EventScope, Position};
@@ -69,7 +69,7 @@ impl Command {
             .get_metadata(META_BINNAME)
             .map(|v| v.to_string())
             .or_else(|| Some(root_name.to_string()));
-        root.update_recursively(vec![], IndexSet::new());
+        root.update_recursively(vec![], IndexSet::new(), IndexMap::new());
         if root.has_metadata(META_INHERIT_FLAG_OPTIONS) {
             root.inherit_flag_options();
         }
@@ -185,11 +185,19 @@ impl Command {
                     let cmd = Self::get_cmd(&mut root_cmd, "@meta", position)?;
                     match key.as_str() {
                         META_SYMBOL => {
-                            let (ch, name, choice_fn) = parse_symbol(&value).ok_or_else(|| {
-                                anyhow!("@meta(line {}) invalid symbol value", position)
-                            })?;
-                            cmd.symbols
-                                .insert(ch, (name.to_string(), choice_fn.map(|v| v.to_string())));
+                            let (ch, name, choice, describe) =
+                                parse_symbol(&value).ok_or_else(|| {
+                                    anyhow!("@meta(line {}) invalid symbol value", position)
+                                })?;
+                            cmd.symbols.insert(
+                                ch,
+                                SymbolParam {
+                                    sign: ch,
+                                    name: name.to_string(),
+                                    choice,
+                                    describe: describe.to_string(),
+                                },
+                            );
                         }
                         META_VERSION => {
                             if value.is_empty() {
@@ -494,7 +502,12 @@ impl Command {
         Some(dotenv)
     }
 
-    fn update_recursively(&mut self, paths: Vec<String>, mut require_tools: IndexSet<String>) {
+    fn update_recursively(
+        &mut self,
+        paths: Vec<String>,
+        mut require_tools: IndexSet<String>,
+        inherited_symbols: IndexMap<char, SymbolParam>,
+    ) {
         self.paths.clone_from(&paths);
 
         // auto alias if command name contains `_`
@@ -582,11 +595,19 @@ impl Command {
         require_tools.extend(self.meta_require_tools());
         self.require_tools = require_tools;
 
+        // update symbols
+        // A symbol is matched wherever it appears on the command line, so a symbol
+        // declared on a parent has to be known to every descendant. A descendant that
+        // declares the same sign wins over the inherited one.
+        let mut symbols = inherited_symbols;
+        symbols.extend(self.symbols.drain(..));
+        self.symbols = symbols;
+
         // update recursively
         for subcmd in self.subcommands.iter_mut() {
             let mut parents = paths.clone();
             parents.push(subcmd.name.clone().unwrap_or_default());
-            subcmd.update_recursively(parents, self.require_tools.clone());
+            subcmd.update_recursively(parents, self.require_tools.clone(), self.symbols.clone());
         }
     }
 
@@ -727,6 +748,7 @@ impl Command {
         output.push(self.render_usage());
         output.push(String::new());
         output.extend(self.render_positionals(wrap_width));
+        output.extend(self.render_symbols(wrap_width));
         output.extend(self.render_flag_options(wrap_width));
         output.extend(self.render_subcommands(wrap_width));
         output.extend(self.render_external_subcommands(wrap_width));
@@ -740,6 +762,7 @@ impl Command {
     fn render_usage(&self) -> String {
         let mut output = vec!["USAGE:".to_string()];
         output.extend(self.cmd_paths());
+        output.extend(self.symbols.values().map(|v| v.render_notation()));
         let required_options: Vec<String> = self
             .flag_option_params
             .iter()
@@ -815,6 +838,30 @@ impl Command {
             .collect();
         value_size += 2;
         output.push("ARGS:".to_string());
+        render_list(&mut output, list, value_size, wrap_width);
+        output
+    }
+
+    fn render_symbols(&self, wrap_width: Option<usize>) -> Vec<String> {
+        let mut output = vec![];
+        let symbols = match self.find_default_subcommand() {
+            Some(subcmd) => &subcmd.symbols,
+            None => &self.symbols,
+        };
+        if symbols.is_empty() {
+            return output;
+        }
+        let mut value_size = 0;
+        let list: Vec<_> = symbols
+            .values()
+            .map(|symbol| {
+                let value = symbol.render_body();
+                value_size = value_size.max(value.len());
+                (value, symbol.describe.clone())
+            })
+            .collect();
+        value_size += 2;
+        output.push("SYMBOLS:".to_string());
         render_list(&mut output, list, value_size, wrap_width);
         output
     }
@@ -917,7 +964,37 @@ pub struct CommandValue {
     pub extra: IndexMap<String, serde_json::Value>,
 }
 
-pub(crate) type SymbolParam = (String, Option<String>);
+#[derive(Debug, Clone)]
+pub(crate) struct SymbolParam {
+    pub(crate) sign: char,
+    pub(crate) name: String,
+    pub(crate) choice: Option<ChoiceValue>,
+    pub(crate) describe: String,
+}
+
+impl SymbolParam {
+    /// The form used in the SYMBOLS list, e.g. `+TOOLCHAIN`.
+    pub(crate) fn render_body(&self) -> String {
+        format!("{}{}", self.sign, self.name.to_uppercase())
+    }
+
+    /// The form used in USAGE, e.g. `[+TOOLCHAIN]`.
+    pub(crate) fn render_notation(&self) -> String {
+        format!("[{}]", self.render_body())
+    }
+
+    /// The form used to name the symbol in an error, e.g. `+<TOOLCHAIN>`.
+    pub(crate) fn render_name_notation(&self) -> String {
+        format!("{}<{}>", self.sign, self.name.to_uppercase())
+    }
+
+    pub(crate) fn choice_fn(&self) -> Option<(&String, &bool)> {
+        match &self.choice {
+            Some(ChoiceValue::Fn(f, validate)) => Some((f, validate)),
+            _ => None,
+        }
+    }
+}
 
 fn retrieve_cmd<'a>(cmd: &'a mut Command, paths: &[String]) -> Option<&'a mut Command> {
     if paths.is_empty() {

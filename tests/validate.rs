@@ -358,3 +358,31 @@ main() { :; }
         [vec!["prog"], vec!["prog", "cmd1"], vec!["prog", "cmd2"],]
     );
 }
+
+#[test]
+fn symbol_choice_fn() {
+    let script = r###"
+# @meta symbol +toolchain[`_choice_fn`] The rust toolchain to build with
+# @option --oa
+
+_choice_fn() {
+    echo stable
+    echo nightly
+}
+"###;
+    snapshot!(script, &["prog", "+unknown"]);
+}
+
+#[test]
+fn symbol_choice_fn_skip() {
+    let script = r###"
+# @meta symbol +toolchain[?`_choice_fn`] The rust toolchain to build with
+# @option --oa
+
+_choice_fn() {
+    echo stable
+    echo nightly
+}
+"###;
+    snapshot!(script, &["prog", "+unknown"]);
+}

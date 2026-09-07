@@ -1,7 +1,7 @@
 # @describe How to use `@meta symbol`
 #
 # Mock cargo cli
-# @meta symbol +toolchain[`_choice_toolchain`]
+# @meta symbol +toolchain[`_choice_toolchain`] The toolchain to build with
 
 # @cmd Compile the current package
 # @alias b 

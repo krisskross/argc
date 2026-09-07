@@ -253,8 +253,10 @@ impl<'a: 'b, 'b, T: Runtime> Matcher<'a, 'b, T> {
                             comp_option = Some(param.id());
                         }
                     } else if let Some((ch, symbol_param)) = find_symbol(cmd, arg) {
-                        if let Some(choice_fn) = &symbol_param.1 {
-                            choice_fns.insert(choice_fn);
+                        if let Some((choice_fn, validate)) = symbol_param.choice_fn() {
+                            if *validate {
+                                choice_fns.insert(choice_fn.as_str());
+                            }
                         }
                         symbol_args.push((&arg[1..], symbol_param));
                         if is_last_arg {
@@ -300,8 +302,10 @@ impl<'a: 'b, 'b, T: Runtime> Matcher<'a, 'b, T> {
                         &mut is_rest_args_positional,
                     );
                 } else if let Some((ch, symbol_param)) = find_symbol(cmd, arg) {
-                    if let Some(choice_fn) = &symbol_param.1 {
-                        choice_fns.insert(choice_fn);
+                    if let Some((choice_fn, validate)) = symbol_param.choice_fn() {
+                        if *validate {
+                            choice_fns.insert(choice_fn.as_str());
+                        }
                     }
                     symbol_args.push((&arg[1..], symbol_param));
                     if is_last_arg {
@@ -629,8 +633,11 @@ impl<'a: 'b, 'b, T: Runtime> Matcher<'a, 'b, T> {
             output.push(ArgcValue::Hook((before_hook, after_hook)));
         }
 
-        for (arg, (name, _)) in self.symbol_args.iter() {
-            output.push(ArgcValue::Single(name.to_string(), arg.to_string()));
+        for (arg, symbol_param) in self.symbol_args.iter() {
+            output.push(ArgcValue::Single(
+                symbol_param.name.clone(),
+                arg.to_string(),
+            ));
         }
 
         for level in 0..cmds_len {
@@ -916,6 +923,21 @@ impl<'a: 'b, 'b, T: Runtime> Matcher<'a, 'b, T> {
                 }
             }
         }
+        for (value, symbol_param) in self.symbol_args.iter() {
+            if let Some(choices) =
+                get_param_choice(symbol_param.choice.as_ref(), &choices_fn_values)
+            {
+                if !choices.contains(&value.to_string()) {
+                    return Some(MatchError::InvalidValue(
+                        level,
+                        value.to_string(),
+                        symbol_param.render_name_notation(),
+                        choices.clone(),
+                    ));
+                }
+            }
+        }
+
         if positional_params_len > positional_values_len {
             let mut missing_positionals = vec![];
             for param in &last_cmd.positional_params[positional_values_len..] {
@@ -1491,20 +1513,21 @@ fn comp_subcomands(
 
 #[cfg(feature = "compgen")]
 fn comp_symbol(cmd: &Command, ch: char) -> Vec<CompItem> {
-    if let Some((name, choices_fn)) = cmd.symbols.get(&ch) {
-        match choices_fn {
-            Some(choices_fn) => {
+    if let Some(symbol_param) = cmd.symbols.get(&ch) {
+        match symbol_param.choice_fn() {
+            Some((choices_fn, _)) => {
                 vec![(
                     format!("__argc_fn={choices_fn}"),
-                    String::new(),
+                    symbol_param.describe.clone(),
                     false,
                     CompColor::of_value(),
                 )]
             }
             None => {
+                let name = &symbol_param.name;
                 vec![(
                     format!("__argc_value={name}"),
-                    String::new(),
+                    symbol_param.describe.clone(),
                     false,
                     CompColor::of_value(),
                 )]

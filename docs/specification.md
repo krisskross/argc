@@ -191,8 +191,30 @@ Adds metadata.
 # @meta dotenv .env.local
 # @meta require-tools git yq
 # @meta man-section 8
-# @meta symbol +toolchain[`_choice_fn`]
+# @meta symbol +toolchain[`_choice_fn`] The rust toolchain to build with
 ```
+
+A symbolic parameter is matched wherever it appears on the command line, by its
+leading sign rather than by position. It takes an optional choice function and
+an optional describe:
+
+```sh
+# @meta symbol +toolchain                              plain
+# @meta symbol +toolchain The rust toolchain           describe
+# @meta symbol +toolchain[`_choice_fn`]                choice from fn
+# @meta symbol +toolchain[?`_choice_fn`]               choice from fn + no validation
+```
+
+The choice function completes the value and validates it, so `prog +unknown`
+fails when `_choice_fn` does not list `unknown`. The `?` prefix keeps the
+completion and drops the validation.
+
+The describe is shown in the `SYMBOLS:` section of the help text, and the
+parameter itself is shown in the usage line as `[+TOOLCHAIN]`.
+
+A symbol declared on a command is inherited by every subcommand under it,
+because a symbol is matched wherever it appears. A subcommand that declares the
+same sign overrides the inherited one.
 
 ## Syntax parts
 

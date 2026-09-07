@@ -1,0 +1,97 @@
+---
+source: tests/spec.rs
+expression: data
+---
+************ RUN ************
+prog build --help
+
+# OUTPUT
+command cat >&2 <<-'EOF' 
+Build the project
+
+USAGE: prog build [+TOOLCHAIN] [OPTIONS]
+
+SYMBOLS:
+  +TOOLCHAIN  The rust toolchain to build with
+
+OPTIONS:
+      --oa <OA>
+  -h, --help
+
+EOF
+exit 0
+
+# RUN_OUTPUT
+Build the project
+
+USAGE: prog build [+TOOLCHAIN] [OPTIONS]
+
+SYMBOLS:
+  +TOOLCHAIN  The rust toolchain to build with
+
+OPTIONS:
+      --oa <OA>
+  -h, --help
+
+************ RUN ************
+prog build +nightly
+
+# OUTPUT
+argc_toolchain=nightly
+argc__args=( prog build +nightly )
+argc__fn=build
+argc__positionals=(  )
+build
+
+# RUN_OUTPUT
+argc__args=([0]="prog" [1]="build" [2]="+nightly")
+argc__fn=build
+argc__positionals=([0]="+nightly")
+build +nightly
+
+************ RUN ************
+prog test --help
+
+# OUTPUT
+command cat >&2 <<-'EOF' 
+Test the project
+
+USAGE: prog test [+TARGET] [OPTIONS]
+
+SYMBOLS:
+  +TARGET  The target triple
+
+OPTIONS:
+      --ob <OB>
+  -h, --help
+
+EOF
+exit 0
+
+# RUN_OUTPUT
+Test the project
+
+USAGE: prog test [+TARGET] [OPTIONS]
+
+SYMBOLS:
+  +TARGET  The target triple
+
+OPTIONS:
+      --ob <OB>
+  -h, --help
+
+************ RUN ************
+prog test +x86_64-unknown-linux-gnu
+
+# OUTPUT
+argc_target=x86_64-unknown-linux-gnu
+argc__args=( prog test +x86_64-unknown-linux-gnu )
+argc__fn=test
+argc__positionals=(  )
+test
+
+# RUN_OUTPUT
+argc__args=([0]="prog" [1]="test" [2]="+x86_64-unknown-linux-gnu")
+argc__fn=test
+argc__positionals=([0]="+x86_64-unknown-linux-gnu")
+test +x86_64-unknown-linux-gnu

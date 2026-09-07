@@ -327,6 +327,47 @@ fn symbol() {
 }
 
 #[test]
+fn symbol_describe() {
+    let script = r###"
+# @meta symbol +toolchain[`_choice_fn`] The rust toolchain to build with
+# @meta symbol @file Read arguments from a file
+# @option --oa
+# @arg val
+
+_choice_fn() {
+    echo stable
+    echo nightly
+}
+"###;
+    snapshot_multi!(script, [vec!["prog", "--help"]]);
+}
+
+#[test]
+fn symbol_inherit() {
+    let script = r###"
+# @meta symbol +toolchain The rust toolchain to build with
+
+# @cmd Build the project
+# @option --oa
+build() { :; }
+
+# @cmd Test the project
+# @meta symbol +target The target triple
+# @option --ob
+test() { :; }
+"###;
+    snapshot_multi!(
+        script,
+        [
+            vec!["prog", "build", "--help"],
+            vec!["prog", "build", "+nightly"],
+            vec!["prog", "test", "--help"],
+            vec!["prog", "test", "+x86_64-unknown-linux-gnu"],
+        ]
+    );
+}
+
+#[test]
 fn plus_sign() {
     let script = r###"
 # @flag +a
