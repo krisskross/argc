@@ -131,7 +131,11 @@ impl<'a: 'b, 'b, T: Runtime> Matcher<'a, 'b, T> {
                 } else if is_rest_args_positional
                     || (cmd.is_empty_flags_options_subcommands()
                         && !cmd.help_flags.contains(&arg)
-                        && !cmd.version_flags.contains(&arg))
+                        && !cmd.version_flags.contains(&arg)
+                        // A command with nothing to parse takes every argument
+                        // as a positional, but a symbol is matched by its sign
+                        // wherever it appears, so it is not one.
+                        && find_symbol(cmd, arg).is_none())
                 {
                     add_positional_arg(
                         &mut positional_args,

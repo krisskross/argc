@@ -1,0 +1,64 @@
+---
+source: tests/spec.rs
+assertion_line: 392
+expression: data
+---
+************ RUN ************
+prog +debug run x
+
+# OUTPUT
+argc_level=debug
+argc_val=x
+argc__args=( prog +debug run x )
+argc__fn=run
+argc__positionals=( x )
+run x
+
+# RUN_OUTPUT
+error: `prog` requires a subcommand but one was not provided
+  [subcommands: run]
+
+************ RUN ************
+prog run +debug x
+
+# OUTPUT
+argc_level=debug
+argc_val=x
+argc__args=( prog run +debug x )
+argc__fn=run
+argc__positionals=( x )
+run x
+
+# RUN_OUTPUT
+error: unexpected argument `x` found
+
+************ RUN ************
+prog run x +debug
+
+# OUTPUT
+argc_level=debug
+argc_val=x
+argc__args=( prog run x +debug )
+argc__fn=run
+argc__positionals=( x )
+run x
+
+# RUN_OUTPUT
+error: unexpected argument `+debug` found
+
+************ RUN ************
+prog run -- +debug
+
+# OUTPUT
+argc_val=+debug
+argc__args=( prog run -- +debug )
+argc__fn=run
+argc__positionals=( +debug )
+run +debug
+
+# RUN_OUTPUT
+argc__args=([0]="prog" [1]="run" [2]="--" [3]="+debug")
+argc__fn=run
+argc__positionals=([0]="+debug")
+argc_val=+debug
+run +debug

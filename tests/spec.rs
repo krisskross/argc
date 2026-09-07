@@ -377,6 +377,26 @@ test() { :; }
 }
 
 #[test]
+fn symbol_position() {
+    let script = r###"
+# @meta symbol +level[trace|debug|info|warn|error] Log level
+
+# @cmd Run it
+# @arg val
+run() { :; }
+"###;
+    snapshot_multi!(
+        script,
+        [
+            vec!["prog", "+debug", "run", "x"],
+            vec!["prog", "run", "+debug", "x"],
+            vec!["prog", "run", "x", "+debug"],
+            vec!["prog", "run", "--", "+debug"],
+        ]
+    );
+}
+
+#[test]
 fn plus_sign() {
     let script = r###"
 # @flag +a
