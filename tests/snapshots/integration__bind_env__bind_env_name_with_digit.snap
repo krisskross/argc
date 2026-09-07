@@ -1,0 +1,20 @@
+---
+source: tests/bind_env.rs
+assertion_line: 234
+expression: "format! (r#\"\n# OUTPUT\n{output}\n\n# BUILD_OUTPUT\n{build_output}\n\"#)"
+---
+
+# OUTPUT
+argc__args=([0]="bind-envs" [1]="cmd_for_digits")
+argc__fn=cmd_for_digits
+argc__positionals=()
+argc_od1=v
+cmd_for_digits
+
+
+# BUILD_OUTPUT
+argc__args=([0]="prog" [1]="cmd_for_digits")
+argc__fn=cmd_for_digits
+argc__positionals=()
+argc_od1=v
+cmd_for_digits

@@ -228,3 +228,10 @@ fn bind_env_symbols_invalid() {
         "BIND_ENVS_LEVEL": "bogus",
     });
 }
+
+#[rstest]
+fn bind_env_name_with_digit() {
+    snapshot_bind_env!(args: ["cmd_for_digits"], envs: {
+        "OD1_VALUE": "v",
+    });
+}

@@ -78,6 +78,12 @@ cmd_for_notation() {
 }
 
 # @cmd
+# @option --od1 $OD1_VALUE
+cmd_for_digits() {
+    _debug "$@"
+}
+
+# @cmd
 # @meta symbol +level[trace|debug|info] $$ Log level
 # @meta symbol @file $SYMBOL_FILE Read arguments from a file
 symbols() {

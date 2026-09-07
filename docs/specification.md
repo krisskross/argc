@@ -347,7 +347,9 @@ A-Z a-z 0-9 `!` `#` `$` `%` `*` `+` `,` `.` `/` `:` `=` `?` `@` `[` `]` `^` `_` 
  Link environment variables to params:
 
 - `$$`: Automatically use the parameter's name in uppercase as the environment variable name, prefixed with the command name (e.g. `--port $$` in command `serve` becomes `SERVE_PORT`).
-- `$`[_NAME_]: Use a specific environment variable name.
+- `$`[_NAME_]: Use a specific environment variable name. The name is spelled as
+  a shell spells one: it starts with an uppercase letter or an underscore, and
+  carries digits after that, so `$APP2_PORT` is a name and `$2APP` is not.
 
 ### description
 

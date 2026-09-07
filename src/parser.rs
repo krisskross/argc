@@ -8,12 +8,12 @@ use crate::Result;
 use anyhow::bail;
 use nom::{
     branch::alt,
-    bytes::complete::{escaped, tag, take_till, take_while1},
+    bytes::complete::{escaped, tag, take_till, take_while, take_while1},
     character::{
         complete::{anychar, char, one_of, satisfy, space0, space1},
         streaming::none_of,
     },
-    combinator::{eof, fail, map, not, opt, peek, rest, success, verify},
+    combinator::{eof, fail, map, not, opt, peek, recognize, rest, success, verify},
     error::ErrorKind,
     multi::{many0, many1, separated_list1},
     sequence::{delimited, pair, preceded, separated_pair, terminated},
@@ -553,8 +553,16 @@ fn parse_value_notation(input: &str) -> nom::IResult<&str, &str> {
     .parse(input)
 }
 
+// An environment variable name, as the shell defines one: it does not start
+// with a digit, and it carries digits after that. `$APP2_PORT` was a syntax
+// error while the whole name had to be uppercase and underscores, which put
+// every tool with a digit in its name out of reach of a bound variable.
 fn parse_bind_env_name(input: &str) -> nom::IResult<&str, &str> {
-    take_while1(is_env_name_char).parse(input)
+    recognize(pair(
+        satisfy(|c: char| c.is_ascii_uppercase() || c == '_'),
+        take_while(is_env_name_char),
+    ))
+    .parse(input)
 }
 
 // Parse `a|b|c`
@@ -806,7 +814,7 @@ fn is_name_char(c: char) -> bool {
 }
 
 fn is_env_name_char(c: char) -> bool {
-    c.is_ascii_uppercase() || c == '_'
+    c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_'
 }
 
 fn is_short_char(c: char) -> bool {
@@ -1182,6 +1190,23 @@ mod tests {
         assert_token!("function foo.bar", Func, "foo.bar");
         assert_token!("function foo@bar", Func, "foo@bar");
         assert_token!("#!/bin/bash", Ignore);
+    }
+
+    #[test]
+    fn test_parse_bind_env_name() {
+        assert_eq!(
+            parse_symbol("+level $APP2_PORT").unwrap(),
+            ('+', "level", None, Some(Some("APP2_PORT".into())), "")
+        );
+        assert_eq!(
+            parse_symbol("+level $_X9").unwrap(),
+            ('+', "level", None, Some(Some("_X9".into())), "")
+        );
+        // A name cannot start with a digit, so this is describe text.
+        assert_eq!(
+            parse_symbol("+level $2APP").unwrap(),
+            ('+', "level", None, None, "$2APP")
+        );
     }
 
     #[test]
