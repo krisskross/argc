@@ -164,6 +164,21 @@ Defines an environment variable.
 # @env EDB[=dev|prod]     choices + default
 ```
 
+A default is expanded before it reaches the script, so a default that names a
+path can be written the way a path is written:
+
+```sh
+# @env STATE_DIR=${XDG_STATE_HOME:-$HOME/.local/state}/myapp
+# @env CONFIG=~/.config/myapp/config
+```
+
+A leading `~`, `$NAME`, `${NAME}`, `${NAME:-fallback}` and `${NAME-fallback}`
+are expanded. Nothing else a shell does to a word is: no splitting, no globbing
+and no command substitution, so `$(date)` stays four characters of text. An
+undefined variable with no fallback expands to nothing, as it does in a shell.
+The expansion applies to `@env` alone, and it happens in the same place whether
+the script runs through `--argc-eval` or was built with `--argc-build`.
+
 ### `@meta`
 
 Adds metadata.

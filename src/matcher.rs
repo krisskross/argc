@@ -7,7 +7,7 @@ use crate::{
     command::{Command, ExternalSubcommandInfo, SymbolParam},
     param::{ChoiceValue, FlagOptionParam, Param, ParamData, PositionalParam},
     runtime::Runtime,
-    utils::{argc_var_name, is_true_value, META_COMBINE_SHORTS},
+    utils::{argc_var_name, expand_shell_value, is_true_value, META_COMBINE_SHORTS},
 };
 
 #[cfg(feature = "compgen")]
@@ -627,6 +627,16 @@ impl<'a: 'b, 'b, T: Runtime> Matcher<'a, 'b, T> {
         for param in &last_cmd.env_params {
             if !self.envs.contains_key(param.id()) {
                 if let Some(value) = param.get_env_value() {
+                    // A default that names a path is written with the shell
+                    // forms for one, and the emitted export is quoted, so it
+                    // is expanded here or not at all.
+                    let value = match value {
+                        ArgcValue::Env(id, v) => ArgcValue::Env(
+                            id,
+                            expand_shell_value(&v, &|name: &str| self.envs.get(name).cloned()),
+                        ),
+                        v => v,
+                    };
                     output.push(value);
                 }
             }
