@@ -204,17 +204,31 @@ choice function, and an optional describe:
 # @meta symbol +toolchain[stable|beta|nightly]         choice
 # @meta symbol +toolchain[`_choice_fn`]                choice from fn
 # @meta symbol +toolchain[?`_choice_fn`]               choice from fn + no validation
+# @meta symbol +toolchain $$                           bind env, autonamed
+# @meta symbol +toolchain $RUST_TOOLCHAIN              bind env, named
 ```
 
 The choices complete the value and validate it, so `prog +unknown` fails when
 `unknown` is not among them. The `?` prefix keeps the completion and drops the
 validation.
 
+<<<<<<< HEAD
 The describe is shown in the `SYMBOLS:` section of the help text, and the
 parameter itself is shown in the usage line as `[+TOOLCHAIN]`. The section
 lists the values the symbol accepts alongside the describe. A choice function
 runs while the help text is rendered, so a script built by `--argc-build`
 lists a literal choice list and nothing for a function.
+=======
+A symbol reads an environment variable when the command line does not carry it,
+spelled the way `@option` and `@arg` spell a binding: `$$` autonames the
+variable `<SCRIPT>_<SYMBOL>`, and `$NAME` names it outright. The command line
+wins over the variable, and a value taken from the variable is validated
+against the choice like any other.
+
+The describe is shown in the `SYMBOLS:` section of the help text, along with
+the choices and the bound variable, and the parameter itself is shown in the
+usage line as `[+TOOLCHAIN]`.
+>>>>>>> 8194439 (feat: bind an environment variable to @meta symbol)
 
 A symbol declared on a command is inherited by every subcommand under it,
 because a symbol is matched wherever it appears. A subcommand that declares the

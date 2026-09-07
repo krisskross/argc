@@ -77,6 +77,13 @@ cmd_for_notation() {
     _debug "$@"
 }
 
+# @cmd
+# @meta symbol +level[trace|debug|info] $$ Log level
+# @meta symbol @file $SYMBOL_FILE Read arguments from a file
+symbols() {
+    _debug "$@"
+}
+
 _debug() {
     ( set -o posix ; set ) | grep ^argc_
     echo "$argc__fn" "$@"

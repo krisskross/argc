@@ -644,6 +644,10 @@ impl<'a: 'b, 'b, T: Runtime> Matcher<'a, 'b, T> {
             ));
         }
 
+        for (value, symbol_param) in self.symbol_bind_envs() {
+            output.push(ArgcValue::Single(symbol_param.name.clone(), value.clone()));
+        }
+
         for level in 0..cmds_len {
             let args = self.flag_option_args[level].as_slice();
             let cmd = self.cmds[level];
@@ -699,6 +703,22 @@ impl<'a: 'b, 'b, T: Runtime> Matcher<'a, 'b, T> {
         output
     }
 
+    /// The symbols the command line did not carry, paired with the value their
+    /// environment variable holds. A symbol given on the command line wins, so
+    /// it is skipped here.
+    fn symbol_bind_envs(&self) -> Vec<(&String, &SymbolParam)> {
+        let mut output = vec![];
+        for (sign, symbol_param) in self.last_cmd().symbols.iter() {
+            if self.symbol_args.iter().any(|(_, v)| v.sign == *sign) {
+                continue;
+            }
+            if let Some(value) = symbol_param.bind_env().and_then(|v| self.envs.get(&v)) {
+                output.push((value, symbol_param));
+            }
+        }
+        output
+    }
+
     #[cfg(feature = "eval")]
     fn build_bind_envs<'x: 'a>(&'x self) -> BindEnvs<'a, 'x> {
         let cmds_len = self.cmds.len();
@@ -721,6 +741,14 @@ impl<'a: 'b, 'b, T: Runtime> Matcher<'a, 'b, T> {
                 let values = delimit_arg_values(param, &[env_value]);
                 bind_envs.positionals.insert(param.id(), values);
                 add_param_choice_fn(&mut bind_envs.choice_fns, param);
+            }
+        }
+
+        // A symbol read from the environment is validated like one given on the
+        // command line, so its choice function has to run.
+        for (_, symbol_param) in self.symbol_bind_envs() {
+            if let Some((choice_fn, true)) = symbol_param.choice_fn().map(|(f, v)| (f, *v)) {
+                bind_envs.choice_fns.insert(choice_fn.as_str());
             }
         }
         bind_envs
@@ -927,14 +955,24 @@ impl<'a: 'b, 'b, T: Runtime> Matcher<'a, 'b, T> {
                 }
             }
         }
-        for (value, symbol_param) in self.symbol_args.iter() {
+        let symbol_bind_envs = self.symbol_bind_envs();
+        let symbol_values = self
+            .symbol_args
+            .iter()
+            .map(|(value, param)| (value.to_string(), *param))
+            .chain(
+                symbol_bind_envs
+                    .iter()
+                    .map(|(value, param)| (value.to_string(), *param)),
+            );
+        for (value, symbol_param) in symbol_values {
             if let Some(choices) =
                 get_param_choice(symbol_param.choice.as_ref(), &choices_fn_values)
             {
-                if !choices.contains(&value.to_string()) {
+                if !choices.contains(&value) {
                     return Some(MatchError::InvalidValue(
                         level,
-                        value.to_string(),
+                        value,
                         symbol_param.render_name_notation(),
                         choices.clone(),
                     ));

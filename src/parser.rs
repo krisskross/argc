@@ -112,7 +112,7 @@ pub(crate) fn parse(source: &str) -> Result<Vec<Event>> {
     Ok(result)
 }
 
-pub(crate) fn parse_symbol(input: &str) -> Option<(char, &str, Option<ChoiceValue>, &str)> {
+pub(crate) fn parse_symbol(input: &str) -> Option<SymbolData<'_>> {
     let input = input.trim();
     parse_symbol_data(input).map(|(_, v)| v).ok()
 }
@@ -691,7 +691,15 @@ fn parse_normal_comment(input: &str) -> nom::IResult<&str, &str> {
     .parse(input)
 }
 
-fn parse_symbol_data(input: &str) -> nom::IResult<&str, (char, &str, Option<ChoiceValue>, &str)> {
+type SymbolData<'a> = (
+    char,
+    &'a str,
+    Option<ChoiceValue>,
+    Option<Option<String>>,
+    &'a str,
+);
+
+fn parse_symbol_data(input: &str) -> nom::IResult<&str, SymbolData<'_>> {
     map(
         (
             alt((char('@'), char('+'))),
@@ -715,12 +723,13 @@ fn parse_symbol_data(input: &str) -> nom::IResult<&str, (char, &str, Option<Choi
                 )),
                 char(']'),
             )),
+            parse_zero_or_one_bind_env,
             // Either the end of the line, or a describe separated by whitespace.
             // Requiring the separator keeps a malformed choice-fn, such as
             // `+toolchain[]`, an error instead of a describe of `[]`.
             parse_tail,
         ),
-        |(symbol, name, choice, describe)| (symbol, name, choice, describe),
+        |(symbol, name, choice, env, describe)| (symbol, name, choice, env, describe),
     )
     .parse(input)
 }
@@ -1179,7 +1188,7 @@ mod tests {
     fn test_parse_symbol() {
         assert_eq!(
             parse_symbol("+toolchain").unwrap(),
-            ('+', "toolchain", None, "")
+            ('+', "toolchain", None, None, "")
         );
         assert_eq!(
             parse_symbol("+toolchain[`_choice_toolchain`]").unwrap(),
@@ -1187,6 +1196,7 @@ mod tests {
                 '+',
                 "toolchain",
                 Some(ChoiceValue::Fn("_choice_toolchain".into(), true)),
+                None,
                 ""
             )
         );
@@ -1196,6 +1206,7 @@ mod tests {
                 '+',
                 "toolchain",
                 Some(ChoiceValue::Fn("_choice_toolchain".into(), false)),
+                None,
                 ""
             )
         );
@@ -1205,12 +1216,37 @@ mod tests {
                 '+',
                 "toolchain",
                 Some(ChoiceValue::Fn("_choice_toolchain".into(), true)),
+                None,
                 "The rust toolchain"
             )
         );
         assert_eq!(
             parse_symbol("@file Read arguments from a file").unwrap(),
-            ('@', "file", None, "Read arguments from a file")
+            ('@', "file", None, None, "Read arguments from a file")
+        );
+        assert_eq!(
+            parse_symbol("+toolchain $$ The rust toolchain").unwrap(),
+            ('+', "toolchain", None, Some(None), "The rust toolchain")
+        );
+        assert_eq!(
+            parse_symbol("+toolchain[stable|nightly] $RUST_TOOLCHAIN").unwrap(),
+            (
+                '+',
+                "toolchain",
+                Some(ChoiceValue::Values(vec!["stable".into(), "nightly".into()])),
+                Some(Some("RUST_TOOLCHAIN".into())),
+                ""
+            )
+        );
+        assert_eq!(
+            parse_symbol("+toolchain[stable|nightly]").unwrap(),
+            (
+                '+',
+                "toolchain",
+                Some(ChoiceValue::Values(vec!["stable".into(), "nightly".into()])),
+                None,
+                ""
+            )
         );
         assert_eq!(
             parse_symbol("+toolchain[stable|nightly] The rust toolchain").unwrap(),
@@ -1218,6 +1254,7 @@ mod tests {
                 '+',
                 "toolchain",
                 Some(ChoiceValue::Values(vec!["stable".into(), "nightly".into()])),
+                None,
                 "The rust toolchain"
             )
         );

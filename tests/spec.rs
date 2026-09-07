@@ -397,6 +397,25 @@ run() { :; }
 }
 
 #[test]
+fn symbol_bind_env() {
+    let script = r###"
+# @meta symbol +level[trace|debug|info] $$ Log level
+# @meta symbol @file $ARGC_FILE Read arguments from a file
+
+# @cmd Run it
+run() { :; }
+"###;
+    snapshot_multi!(
+        script,
+        [
+            vec!["prog", "run", "--help"],
+            vec!["prog", "run"],
+            vec!["prog", "+debug", "run"],
+        ]
+    );
+}
+
+#[test]
 fn plus_sign() {
     let script = r###"
 # @flag +a

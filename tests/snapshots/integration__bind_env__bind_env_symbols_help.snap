@@ -1,0 +1,21 @@
+---
+source: tests/bind_env.rs
+assertion_line: 207
+expression: "format! (r#\"\n# OUTPUT\n{output}\n\n# BUILD_OUTPUT\n{build_output}\n\"#)"
+---
+
+# OUTPUT
+USAGE: bind-envs symbols [+LEVEL] [@FILE]
+
+SYMBOLS:
+  +LEVEL  Log level [possible values: trace, debug, info] [env: BIND_ENVS_LEVEL]
+  @FILE   Read arguments from a file [env: SYMBOL_FILE]
+
+
+
+# BUILD_OUTPUT
+USAGE: bind-envs symbols [+LEVEL] [@FILE]
+
+SYMBOLS:
+  +LEVEL  Log level [possible values: trace, debug, info] [env: BIND_ENVS_LEVEL]
+  @FILE   Read arguments from a file [env: SYMBOL_FILE]

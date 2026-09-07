@@ -1,0 +1,20 @@
+---
+source: tests/bind_env.rs
+assertion_line: 212
+expression: "format! (r#\"\n# OUTPUT\n{output}\n\n# BUILD_OUTPUT\n{build_output}\n\"#)"
+---
+
+# OUTPUT
+argc__args=([0]="bind-envs" [1]="symbols")
+argc__fn=symbols
+argc__positionals=()
+argc_file=args.txt
+argc_level=debug
+symbols
+
+
+# BUILD_OUTPUT
+argc__args=([0]="prog" [1]="symbols")
+argc__fn=symbols
+argc__positionals=()
+symbols

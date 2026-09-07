@@ -13,9 +13,9 @@ use crate::param::{EnvValue, FlagOptionValue, PositionalValue};
 use crate::parser::{parse, parse_symbol, Event, EventData, EventScope, Position};
 use crate::runtime::Runtime;
 use crate::utils::{
-    AFTER_HOOK, BEFORE_HOOK, MAIN_NAME, META_BINNAME, META_COMBINE_SHORTS, META_DEFAULT_SUBCOMMAND,
-    META_DOTENV, META_INHERIT_FLAG_OPTIONS, META_REQUIRE_TOOLS, META_SYMBOL, META_VERSION,
-    ROOT_NAME,
+    sanitize_var_name, AFTER_HOOK, BEFORE_HOOK, MAIN_NAME, META_BINNAME, META_COMBINE_SHORTS,
+    META_DEFAULT_SUBCOMMAND, META_DOTENV, META_INHERIT_FLAG_OPTIONS, META_REQUIRE_TOOLS,
+    META_SYMBOL, META_VERSION, ROOT_NAME,
 };
 use crate::Result;
 
@@ -185,8 +185,8 @@ impl Command {
                     let cmd = Self::get_cmd(&mut root_cmd, "@meta", position)?;
                     match key.as_str() {
                         META_SYMBOL => {
-                            let (ch, name, choice, describe) =
-                                parse_symbol(&value).ok_or_else(|| {
+                            let (ch, name, choice, env, describe) = parse_symbol(&value)
+                                .ok_or_else(|| {
                                     anyhow!("@meta(line {}) invalid symbol value", position)
                                 })?;
                             cmd.symbols.insert(
@@ -195,6 +195,8 @@ impl Command {
                                     sign: ch,
                                     name: name.to_string(),
                                     choice,
+                                    env,
+                                    root_name: None,
                                     describe: describe.to_string(),
                                 },
                             );
@@ -644,6 +646,9 @@ impl Command {
         for param in self.positional_params.iter_mut() {
             param.data_mut().root_name = Some(root_name.clone());
         }
+        for symbol in self.symbols.values_mut() {
+            symbol.root_name = Some(root_name.clone());
+        }
         for subcmd in self.subcommands.iter_mut() {
             subcmd.propagate_cmd_name_to_params();
         }
@@ -980,6 +985,10 @@ pub(crate) struct SymbolParam {
     pub(crate) sign: char,
     pub(crate) name: String,
     pub(crate) choice: Option<ChoiceValue>,
+    /// `None` binds no environment variable, `Some(None)` autonames one from
+    /// the script and the symbol, and `Some(Some(name))` names it outright.
+    pub(crate) env: Option<Option<String>>,
+    pub(crate) root_name: Option<String>,
     pub(crate) describe: String,
 }
 
@@ -1013,9 +1022,27 @@ impl SymbolParam {
         }
     }
 
-    /// The describe, followed by the values the symbol accepts when they are known.
-    /// A choice function only has values here when the help text is rendered by a
-    /// run that could execute it.
+    /// The environment variable this symbol reads when it is absent from the
+    /// command line, named the way @option and @arg name theirs.
+    pub(crate) fn bind_env(&self) -> Option<String> {
+        let env = match self.env.as_ref()? {
+            Some(name) => name.clone(),
+            None => {
+                let name = sanitize_var_name(&self.name).to_uppercase();
+                match &self.root_name {
+                    Some(prefix) => {
+                        format!("{}_{}", sanitize_var_name(prefix).to_uppercase(), name)
+                    }
+                    None => name,
+                }
+            }
+        };
+        Some(env)
+    }
+
+    /// The describe, followed by the values the symbol accepts when they are known,
+    /// and the variable it is bound to. A choice function only has values here when
+    /// the help text is rendered by a run that could execute it.
     #[cfg(any(feature = "build", feature = "eval"))]
     pub(crate) fn render_describe(&self, choices: Option<&Vec<String>>) -> String {
         let mut output = self.describe.clone();
@@ -1025,6 +1052,14 @@ impl SymbolParam {
                     output.push(' ');
                 }
                 output.push_str(&format!("[possible values: {}]", choices.join(", ")));
+            }
+        }
+        if let Some(env) = self.bind_env() {
+            if !self.describe.contains(&env) {
+                if !output.is_empty() {
+                    output.push(' ');
+                }
+                output.push_str(&format!("[env: {env}]"));
             }
         }
         output
